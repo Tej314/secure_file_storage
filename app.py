@@ -4,16 +4,52 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import os, sqlite3, io
 from utils.crypto_utils import generate_key, encrypt_file, decrypt_file
 
+# Initialize Flask app
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
+
+# Upload folder setup
 UPLOAD_FOLDER = 'uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
+# Route: Upload & Encrypt
+@app.route('/upload', methods=['POST'])
+def upload():
+    if 'username' not in session:
+        return redirect(url_for('login'))
+
+    if 'file' not in request.files or request.files['file'].filename == '':
+        flash("No file selected.")
+        return redirect(url_for('dashboard'))
+
+    file = request.files['file']
+    password = request.form.get('password')
+
+    if file and password:
+        salt = os.urandom(16)
+        key = generate_key(password, salt)
+        encrypted_data = encrypt_file(file.read(), key)
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename + '.enc')
+
+        with open(filepath, 'wb') as f:
+            f.write(salt + encrypted_data)
+
+        flash("File uploaded and encrypted successfully!")
+
+    return redirect(url_for('dashboard'))
+
+
+# Database setup helper
 def get_db():
     conn = sqlite3.connect('users.db')
-    conn.execute('''CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, username TEXT UNIQUE, password TEXT)''')
+    conn.execute('''CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY, 
+        username TEXT UNIQUE, 
+        password TEXT)''')
     return conn
+
 
 @app.route('/')
 def index():
@@ -55,21 +91,6 @@ def logout():
     session.pop('username', None)
     return redirect(url_for('login'))
 
-@app.route('/upload', methods=['POST'])
-def upload():
-    if 'username' not in session:
-        return redirect(url_for('login'))
-    file = request.files['file']
-    password = request.form['password']
-    if file and password:
-        salt = os.urandom(16)
-        key = generate_key(password, salt)
-        encrypted_data = encrypt_file(file.read(), key)
-        filename = secure_filename(file.filename)
-        with open(os.path.join(app.config['UPLOAD_FOLDER'], filename + '.enc'), 'wb') as f:
-            f.write(salt + encrypted_data)
-        flash('File uploaded and encrypted successfully.')
-    return redirect(url_for('index'))
 
 @app.route('/download/<filename>', methods=['GET', 'POST'])
 def download(filename):
@@ -90,4 +111,4 @@ def download(filename):
     return render_template('decrypt_prompt.html', filename=filename)
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True)
