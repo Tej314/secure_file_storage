@@ -1,0 +1,3 @@
+Flask==2.x.x
+cryptography==41.x.x
+gunicorn==21.x
